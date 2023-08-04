@@ -1,0 +1,9 @@
+name = "st7789"
+description = "SPI based driver for the ST7789 TFT display"
+version = "0.1.0"
+
+authors = ["Johannes Kliemann"]
+maintainers = ["Johannes Kliemann <jk@jkliemann.de>"]
+maintainers-logins = ["jklmnn"]
+[[depends-on]]
+hal = "~0.3.0"
