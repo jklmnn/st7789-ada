@@ -113,9 +113,9 @@ package body St7789 is
       end if;
       Dev.DC_Pin.Set;
       Dev.SPI.Transmit
-         (HAL.SPI.SPI_Data_8b'(HAL.UInt8 (Window.Position.X),
-                               HAL.UInt8 (Window.Position.X
-                                          + Window.Width - 1)),
+         (HAL.SPI.SPI_Data_8b'(0, HAL.UInt8 (Window.Position.X),
+                               0, HAL.UInt8 (Window.Position.X
+                                             + Window.Width - 1)),
           SPI_Status);
       Status := To_Status (SPI_Status);
       if Status /= OK then
@@ -127,9 +127,9 @@ package body St7789 is
       end if;
       Dev.DC_Pin.Set;
       Dev.SPI.Transmit
-         (HAL.SPI.SPI_Data_8b'(HAL.UInt8 (Window.Position.Y),
-                               HAL.UInt8 (Window.Position.Y
-                                          + Window.Width - 1)),
+         (HAL.SPI.SPI_Data_8b'(0, HAL.UInt8 (Window.Position.Y),
+                               0, HAL.UInt8 (Window.Position.Y
+                                             + Window.Height - 1)),
           SPI_Status);
       Status := To_Status (SPI_Status);
       if Status /= OK then
