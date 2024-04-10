@@ -1,8 +1,8 @@
 with HAL;
-with Interfaces;
 
 package body St7789 is
 
+   use type HAL.UInt32;
    use type HAL.Bitmap.Bitmap_Color_Mode;
 
    function To_Status (S : HAL.SPI.SPI_Status) return Device_Status
@@ -63,23 +63,6 @@ package body St7789 is
       Dev.CS_Pin.Clear;
    end Write_Data;
 
-   procedure Write_Data (Dev    :     Device;
-                         Cmd    :     Command;
-                         Data   :     HAL.SPI.SPI_Data_16b;
-                         Status : out Device_Status)
-   is
-      SPI_Status : HAL.SPI.SPI_Status;
-   begin
-      Dev.Write_Cmd (Cmd, Status, True);
-      if Status /= OK then
-         return;
-      end if;
-      Dev.DC_Pin.Set;
-      Dev.SPI.Transmit (Data, SPI_Status);
-      Status := To_Status (SPI_Status);
-      Dev.CS_Pin.Clear;
-   end Write_Data;
-
    function New_Device (CS_Pin  : HAL.GPIO.Any_GPIO_Point;
                         RST_Pin : HAL.GPIO.Any_GPIO_Point;
                         DC_Pin  : HAL.GPIO.Any_GPIO_Point;
@@ -95,7 +78,7 @@ package body St7789 is
                                             Area   => HAL.Bitmap.Rect'(Position => HAL.Bitmap.Point'(0, 0),
                                                                        Width    => Screen_Width,
                                                                        Height   => Screen_Height),
-                                            Source => 0));
+                                            Source => (0, 0)));
    end New_Device;
 
    procedure Set_Window (Dev    :     Device;
@@ -277,11 +260,13 @@ package body St7789 is
                          Source :        HAL.UInt32)
    is
    begin
-      This.Source := HAL.UInt16 (Source);
+      This.Source (1) := HAL.UInt8 (HAL.Shift_Right (Source, 8));
+      This.Source (2) := HAL.UInt8 (Source);
    end Set_Source;
 
    overriding
-   function Source (This : Bitmap) return HAL.UInt32 is (HAL.UInt32 (This.Source));
+   function Source (This : Bitmap) return HAL.UInt32 is
+      (HAL.Shift_Left (HAL.UInt32 (This.Source (1)), 8) + HAL.UInt32 (This.Source (2)));
 
    overriding
    function Width (This : Bitmap) return Natural is (This.Area.Width);
@@ -334,8 +319,7 @@ package body St7789 is
    procedure Fill_Rect (This : in out Bitmap;
                         Area :        HAL.Bitmap.Rect)
    is
-      Line : constant HAL.SPI.SPI_Data_16b (0 .. Area.Width - 1) :=
-         (others => This.Source);
+      Line : HAL.SPI.SPI_Data_8b (1 .. Area.Width * 2);
       SPI_Status : HAL.SPI.SPI_Status;
       Status     : Device_Status;
    begin
@@ -343,9 +327,13 @@ package body St7789 is
       if Status /= OK then
          return;
       end if;
+      for C in 1 .. Area.Width loop
+         Line (C * 2 - 1) := This.Source (1);
+         Line (C * 2) := This.Source (2);
+      end loop;
       This.Dev.DC_Pin.Set;
       This.Dev.CS_Pin.Clear;
-      for L in 0 .. Area.Height - 1 loop
+      for L in 1 .. Area.Height loop
          This.Dev.SPI.Transmit (Line, SPI_Status);
          exit when To_Status (SPI_Status) /= OK;
       end loop;

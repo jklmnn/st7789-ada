@@ -97,7 +97,7 @@ private
    type Bitmap is new Soft_Drawing_Bitmap.Soft_Drawing_Bitmap_Buffer with record
       Dev    : Any_Device;
       Area   : HAL.Bitmap.Rect;
-      Source : HAL.UInt16;
+      Source : HAL.SPI.SPI_Data_8b (1 .. 2);
    end record;
 
    type Device is limited new HAL.Framebuffer.Frame_Buffer_Display with record
@@ -170,11 +170,6 @@ private
    procedure Write_Data (Dev    :     Device;
                          Cmd    :     Command;
                          Data   :     HAL.SPI.SPI_Data_8b;
-                         Status : out Device_Status);
-
-   procedure Write_Data (Dev    :     Device;
-                         Cmd    :     Command;
-                         Data   :     HAL.SPI.SPI_Data_16b;
                          Status : out Device_Status);
 
    procedure Set_Window (Dev    :     Device;
