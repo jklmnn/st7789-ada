@@ -3,6 +3,8 @@ with Interfaces;
 
 package body St7789 is
 
+   use type HAL.Bitmap.Bitmap_Color_Mode;
+
    function To_Status (S : HAL.SPI.SPI_Status) return Device_Status
    is
    begin
@@ -84,10 +86,16 @@ package body St7789 is
                         SPI     : HAL.SPI.Any_SPI_Port) return Device
    is
    begin
-      return Device'(CS_Pin  => CS_Pin,
-                     RST_Pin => RST_Pin,
-                     DC_Pin  => DC_Pin,
-                     SPI     => SPI);
+      return Device'(Initialized => False,
+                     CS_Pin      => CS_Pin,
+                     RST_Pin     => RST_Pin,
+                     DC_Pin      => DC_Pin,
+                     SPI         => SPI,
+                     Layer       => Bitmap'(Dev    => null,
+                                            Area   => HAL.Bitmap.Rect'(Position => HAL.Bitmap.Point'(0, 0),
+                                                                       Width    => Screen_Width,
+                                                                       Height   => Screen_Height),
+                                            Source => 0));
    end New_Device;
 
    procedure Set_Window (Dev    :     Device;
@@ -138,8 +146,8 @@ package body St7789 is
       Dev.Write_Cmd (RAMWR, Status);
    end Set_Window;
 
-   procedure Initialize (Dev    :     Device;
-                         Status : out Device_Status)
+   procedure Initialize (Dev    : in out Device;
+                         Status :    out Device_Status)
    is
    begin
       Dev.RST_Pin.Set_Mode (HAL.GPIO.Output);
@@ -176,6 +184,7 @@ package body St7789 is
          return;
       end if;
       Dev.Write_Cmd (DISPON, Status);
+      Dev.Initialized := Status = OK;
    end Initialize;
 
    procedure Turn_Off (Dev    :     Device;
@@ -185,39 +194,164 @@ package body St7789 is
       Dev.Write_Cmd (DISPOFF, Status);
    end Turn_Off;
 
-   function RGB888_To_RGB565 (Color : HAL.Bitmap.Bitmap_Color)
-      return HAL.UInt16
-   is
-      use Interfaces;
-      Red, Green, Blue : Unsigned_16 := 0;
-   begin
-      Blue  := Shift_Right (Unsigned_16 (Color.Blue), 3) and 16#1F#;
-      Green :=
-         Shift_Left (Shift_Right (Unsigned_16 (Color.Green), 2) and 16#3F#, 5);
-      Red   :=
-         Shift_Left (Shift_Right (Unsigned_16 (Color.Red), 3) and 16#1F#, 11);
-      return HAL.UInt16 (Red or Green or Blue);
-   end RGB888_To_RGB565;
+   overriding
+   function Max_Layers (This : Device) return Positive is (1);
 
-   procedure Draw (Dev    :     Device;
-                   Area   :     HAL.Bitmap.Rect;
-                   Color  :     HAL.Bitmap.Bitmap_Color;
-                   Status : out Device_Status)
+   overriding
+   function Supported (This : Device;
+                       Mode : HAL.Framebuffer.FB_Color_Mode) return Boolean is
+      (Mode = HAL.Bitmap.RGB_565);
+
+   overriding
+   procedure Set_Orientation (This        : in out Device;
+                              Orientation :        HAL.Framebuffer.Display_Orientation) is null;
+
+   overriding
+   procedure Set_Mode (This : in out Device;
+                       Mode :        HAL.Framebuffer.Wait_Mode) is null;
+
+   overriding
+   function Initialized (This : Device) return Boolean is (This.Initialized);
+
+   overriding
+   function Width (This : Device) return Positive is (Screen_Width);
+
+   overriding
+   function Height (This : Device) return Positive is (Screen_Height);
+
+   overriding
+   function Swapped (This : Device) return Boolean is (False);
+
+   overriding
+   procedure Set_Background (This    : Device;
+                             R, G, B : HAL.UInt8) is null;
+
+   overriding
+   procedure Initialize_Layer (This   : in out Device;
+                               Layer  :        Positive;
+                               Mode   :        HAL.Framebuffer.FB_Color_Mode := HAL.Bitmap.RGB_565;
+                               X      :        Natural := 0;
+                               Y      :        Natural := 0;
+                               Width  :        Positive := Screen_Width;
+                               Height :        Positive := Screen_Height)
+   is
+   begin
+      if Layer /= 1 or Mode /= HAL.Bitmap.RGB_565 then
+         return;
+      end if;
+      This.Layer.Dev := This'Unrestricted_Access;
+      This.Layer.Area.Position.X := X;
+      This.Layer.Area.Position.Y := Y;
+      This.Layer.Area.Height     := Height;
+      This.Layer.Area.Width      := Width;
+   end Initialize_Layer;
+
+   overriding
+   function Initialized (This  : Device;
+                         Layer : Positive) return Boolean is
+      (Layer = 1 and then This.Layer.Dev /= null);
+
+   overriding
+   procedure Update_Layer (This      : in out Device;
+                           Layer     :        Positive;
+                           Copy_Back :        Boolean := False) is null;
+
+   overriding
+   procedure Update_Layers (This : in out Device) is null;
+
+   overriding
+   function Color_Mode (This  : Device;
+                        Layer : Positive) return HAL.Framebuffer.FB_Color_Mode is (HAL.Bitmap.RGB_565);
+
+   overriding
+   function Hidden_Buffer (This  : in out Device;
+                           Layer :        Positive) return not null HAL.Bitmap.Any_Bitmap_Buffer is
+      (This.Layer'Unrestricted_Access);
+
+   overriding
+   function Pixel_Size (This  : Device;
+                        Layer : Positive) return Positive is (16);
+
+   overriding
+   procedure Set_Source (This   : in out Bitmap;
+                         Source :        HAL.UInt32)
+   is
+   begin
+      This.Source := HAL.UInt16 (Source);
+   end Set_Source;
+
+   overriding
+   function Source (This : Bitmap) return HAL.UInt32 is (HAL.UInt32 (This.Source));
+
+   overriding
+   function Width (This : Bitmap) return Natural is (This.Area.Width);
+
+   overriding
+   function Height (This : Bitmap) return Natural is (This.Area.Width);
+
+   overriding
+   function Swapped (This : Bitmap) return Boolean is (False);
+
+   overriding
+   function Color_Mode (This : Bitmap) return HAL.Bitmap.Bitmap_Color_Mode is (This.Dev.Color_Mode (1));
+
+   overriding
+   function Mapped_In_RAM (This : Bitmap) return Boolean is (False);
+
+   overriding
+   function Memory_Address (This : Bitmap) return System.Address is (System.Null_Address);
+
+   overriding
+   procedure Set_Pixel (This : in out Bitmap;
+                        Pt   :        HAL.Bitmap.Point)
+   is
+   begin
+      This.Fill_Rect (HAL.Bitmap.Rect'(Position => Pt,
+                                       Width    => 1,
+                                       Height   => 1));
+   end Set_Pixel;
+
+   overriding
+   procedure Set_Pixel_Blend (This : in out Bitmap;
+                              Pt   :        HAL.Bitmap.Point) renames Set_Pixel;
+
+   overriding
+   function Pixel (This : Bitmap;
+                   Pt   : HAL.Bitmap.Point) return HAL.UInt32
+   is
+   begin
+      return raise Program_Error with "not supported";
+   end Pixel;
+
+   overriding
+   procedure Fill (This : in out Bitmap)
+   is
+   begin
+      This.Fill_Rect (This.Area);
+   end Fill;
+
+   overriding
+   procedure Fill_Rect (This : in out Bitmap;
+                        Area :        HAL.Bitmap.Rect)
    is
       Line : constant HAL.SPI.SPI_Data_16b (0 .. Area.Width - 1) :=
-         (others => RGB888_To_RGB565 (Color));
+         (others => This.Source);
       SPI_Status : HAL.SPI.SPI_Status;
+      Status     : Device_Status;
    begin
-      Dev.Set_Window (Area, Status);
+      This.Dev.Set_Window (Area, Status);
       if Status /= OK then
          return;
       end if;
-      Dev.DC_Pin.Set;
-      Dev.CS_Pin.Clear;
-      for L in Area.Position.Y .. Area.Height - 1 loop
-         Dev.SPI.Transmit (Line, SPI_Status);
+      This.Dev.DC_Pin.Set;
+      This.Dev.CS_Pin.Clear;
+      for L in 0 .. Area.Height - 1 loop
+         This.Dev.SPI.Transmit (Line, SPI_Status);
          exit when To_Status (SPI_Status) /= OK;
       end loop;
-   end Draw;
+   end Fill_Rect;
+
+   overriding
+   function Buffer_Size (This : Bitmap) return Natural is (0);
 
 end St7789;
